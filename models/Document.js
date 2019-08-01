@@ -5,8 +5,8 @@ const documentSchema = mongoose.Schema({
   name: String,
   thumbnail: String,
   pdfAbsolutPath: String,
-  thumbnailAbsolutPath: String,
-  thumbnailLocalPath: String
+  thumbnailLocalPath: String,
+  thumbnailAbsolutPath: String
 });
 
 const documentModel = mongoose.model("document", documentSchema);
