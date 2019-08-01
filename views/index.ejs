@@ -15,7 +15,7 @@
       <%=title%>
     </h2>
 
-    <form action="/upload-pdf" method="POST">
+    <form action="/download-pdf" method="POST">
       <div class="form-group">
         <label for="exampleInputEmail1"> <%= subTitle %> </label>
         <input
@@ -36,9 +36,10 @@
 
     <form style="margin-top: 40px" action="/list" method="GET">
       <div class="form-group">
-        <label for="exampleInputEmail1"> List of saved PDF </label>
+        <label for="exampleInputEmail1"> List of downloaded PDF </label>
       </div>
-        <a class="btn btn-secondary" href="/list" role="button">Show</a>
+        <a class="btn btn-secondary" href="/list" role="button">Show list</a>
+        <a class="btn btn-outline-secondary" href="/list-json" role="button">Show database</a>
       </div>
     </form>
 
