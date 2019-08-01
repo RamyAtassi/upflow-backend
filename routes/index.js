@@ -4,12 +4,9 @@ const fs = require("fs");
 const request = require("request");
 const pdf = require("pdf-thumbnail");
 const jpeg = require("jpeg-js");
+const https = require("https");
 
 const Document = require("../models/Document");
-
-// const jpegData = fs.readFileSync("./public/thumbnailFolder/37185.jpg");
-// const rawImageData = jpeg.decode(jpegData);
-// console.log(rawImageData);
 
 // Home page
 router.get("/", function(req, res, next) {
@@ -22,61 +19,100 @@ router.get("/", function(req, res, next) {
 /* POST request to save PDF from an URL link */
 router.post("/download-pdf", async function(req, res, next) {
   // Creation of the empty PDF file in the folder public/pdf
-  let randomNumber = Math.floor(Math.random() * 1000000);
-  let path = `./public/pdfFolder/${randomNumber}.pdf`;
+  let fileName = Math.floor(Math.random() * 1000000);
+  let path = `./public/pdfFolder/${fileName}.pdf`;
   let createdEmptyFile = await fs.createWriteStream(path);
 
   // Modifying the content of the empty file with the pdf contained in the URL link
   // req.body.pdfURL contains the URL link
-  await new Promise((resolve, reject) => {
-    request({
-      uri: req.body.pdfURL,
-      headers: {}
-    })
-      .pipe(createdEmptyFile)
-      .on("finish", () => {
-        console.log(`The file is finished downloading`);
+  await new Promise(async (resolve, reject) => {
+    try {
+      let result = await request({
+        uri: req.body.pdfURL,
+        headers: {
+          accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3",
+          "accept-encoding": "gzip, deflate, br",
+          "accept-language":
+            "fr-FR,fr;q=0.9,en;q=0.8,zh-CN;q=0.7,zh;q=0.6,ar;q=0.5",
+          "cache-control": "max-age=0",
+          "upgrade-insecure-requests": "1",
+          "user-agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.142 Safari/537.36}"
+        },
+        gzip: true
+      });
+
+      const downloadedFile = await result.pipe(createdEmptyFile);
+
+      downloadedFile.on("finish", () => {
+        console.log(`1 - Downloading process is over`);
         resolve();
-      })
-      .on("error", error => {
+      });
+      downloadedFile.on("error", error => {
         reject(error);
       });
-  }).catch(error => {
-    console.log(`Something wrong happened: ${error}`);
+    } catch (err) {
+      console.log(err);
+    }
   });
 
   // Creation of the corresponding thumbnail using the first page of the PDF
-  const pdfBuffer = await fs.createReadStream(path);
+  try {
+    // creation of the buffer of the downloaded PDF
+    const pdfBuffer = await fs.createReadStream(path);
 
-  pdf(pdfBuffer, {
-    compress: {
-      type: "JPEG", //default
-      quality: 70 //default
-    }
-  })
-    .then(data =>
-      data.pipe(
-        fs.createWriteStream(`./public/thumbnailFolder/${randomNumber}.jpg`)
-      )
-    )
-    .catch(err => console.error(err));
+    // creation of the thumbnail from the PDF buffer (1st page)
+    const image = await pdf(pdfBuffer, {
+      compress: {
+        type: "JPEG", //default
+        quality: 70 //default
+      }
+    });
 
+    // The thumbnail is locally saved
+    await image.pipe(
+      fs.createWriteStream(`./public/thumbnailFolder/${fileName}.jpg`)
+    );
+    console.log("2 - PDF thumbnail is created");
+  } catch (err) {
+    console.log(err);
+  }
+
+  // creation of a database
   try {
     const newDocument = new Document({
       url: req.body.pdfURL,
-      name: randomNumber,
-      thumbnail: `../thumbnailFolder/${randomNumber}.jpg`,
-      pdfAbsolutPath: `/Users/ramyatassi/Desktop/upflowBackendTest/backend/public/pdfFolder/${randomNumber}.pdf`,
-      thumbnailAbsolutPath: `/Users/ramyatassi/Desktop/upflowBackendTest/backend/public/thumbnailFolder/${randomNumber}.jpg`,
-      thumbnailLocalPath: `./public/thumbnailFolder/${randomNumber}.jpg`
+      name: fileName,
+      thumbnail: `../thumbnailFolder/${fileName}.jpg`,
+      pdfAbsolutPath: `/Users/ramyatassi/Desktop/upflowBackendTest/backend/public/pdfFolder/${fileName}.pdf`,
+      thumbnailAbsolutPath: `/Users/ramyatassi/Desktop/upflowBackendTest/backend/public/thumbnailFolder/${fileName}.jpg`,
+      thumbnailLocalPath: `./public/thumbnailFolder/${fileName}.jpg`
     });
     await newDocument.save();
+    console.log("3 - Document details saved in the database");
+
+    //Webhook
+    const options = {
+      hostname: "upflow-backend.free.beeceptor.com",
+      port: 443,
+      path: "/",
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      }
+    };
+
+    const reqWebhook = https.request(options);
+    reqWebhook.write(`Download completed : ${req.body.pdfURL}`);
+    // reqWebhook.write(req.body.pdfURL);
+    reqWebhook.end();
   } catch (err) {
     console.error(err.message);
     res.status(500).send("Server Error");
   }
 
-  res.render("index", { title: "PDF downloaded", subTitle: "" });
+  res.render("index", { title: "PDF downloaded!", subTitle: "" });
 });
 
 // Get the list of all saved PDF and associated thumbnails
@@ -119,9 +155,7 @@ router.get("/list", async function(req, res, next) {
     x => jpeg.decode(fs.readFileSync(x)).data
   );
 
-  let uniqueElements = [...new Set(tableBuffer)];
-  let numberDuplicates = tableBuffer.length - uniqueElements.length;
-
+  let numberDuplicates = 0;
   for (let i = 0; i < tableBuffer.length - 1; i++) {
     for (let j = i + 1; j < tableBuffer.length; j++) {
       if (Buffer.compare(tableBuffer[i], tableBuffer[j]) === 0) {
@@ -131,8 +165,6 @@ router.get("/list", async function(req, res, next) {
   }
 
   res.render("list", {
-    title: "Upflow backend coding challenge",
-    subTitle: "List of saved PDF",
     tableDocuments,
     numberDuplicates
   });
